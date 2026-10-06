@@ -1,0 +1,69 @@
+{
+  "name": "dsh-newapi-model-sync",
+  "version": "1.0.0",
+  "description": "Mirror a New API instance's model list into a DeepSeek Harness llm-pi-ai provider route.",
+  "type": "module",
+  "main": "index.js",
+  "icon": "./icon.svg",
+  "license": "MIT",
+  "author": "PellyLee <qtsrain@qq.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PellyLee/dsh-newapi-model-sync.git"
+  },
+  "homepage": "https://github.com/PellyLee/dsh-newapi-model-sync#readme",
+  "bugs": {
+    "url": "https://github.com/PellyLee/dsh-newapi-model-sync/issues"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "new-api",
+    "newapi",
+    "llm",
+    "model-sync"
+  ],
+  "meta": {
+    "title": "New API Model Sync",
+    "description": "Automatically mirrors the model list of a New API instance into the llm-pi-ai provider route."
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "icon.svg",
+    "locale/*.json",
+    "CHANGELOG.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ]
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh": "0.1.7-rc.2 || 0.2.0-rc.1 || 0.2.0-rc.2",
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh": {
+      "optional": true
+    }
+  }
+}

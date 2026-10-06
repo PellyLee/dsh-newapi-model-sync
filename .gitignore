@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Debug traces produced by the debugFile setting
+*.log
+.sync-debug.log
+
+# Packaging / publishing leftovers
+*.tgz
+.npmrc.local
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

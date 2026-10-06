@@ -1,0 +1,4 @@
+{
+  "title": "New API 模型同步",
+  "description": "自动把 New API 实例的模型列表同步进 llm-pi-ai 的 provider 路由：新增即加入、删除即移除；支持设置页配置、定时与手动同步。"
+}

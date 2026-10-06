@@ -1,0 +1,4 @@
+{
+  "title": "New API Model Sync",
+  "description": "Automatically mirrors a New API instance's model list into the llm-pi-ai provider route, with settings, timer and manual sync."
+}

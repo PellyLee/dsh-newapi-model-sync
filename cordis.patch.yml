@@ -1,0 +1,3 @@
+- insert:
+    - id: newapi-model-sync
+      name: 'dsh-newapi-model-sync'
