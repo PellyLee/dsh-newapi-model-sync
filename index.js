@@ -45,15 +45,17 @@ const Config = z.object({
   /** Keep per-model custom fields (contextWindow etc.) from the previous list by id. */
   preserveCustomFields: z.boolean().default(true).volatile(),
   /** Volatile trigger: the settings-page button bumps it to start a manual sync. */
-  syncRequestAt: z.number().default(0).volatile(),
+  syncRequestAt: z.number().default(0).volatile().hidden(),
   /** Optional trace file path for diagnosis; empty disables file tracing. */
   debugFile: z.string().default('').volatile(),
-  /** Last completed sync timestamp, host-written. */
-  lastSyncAt: z.number().default(0),
+  /** Last completed sync timestamp, host-written. Volatile so the settings card reads
+   * it from `remote.settings.describe()` (only volatile fields reach that payload),
+   * and hidden so no generated form offers it for editing. */
+  lastSyncAt: z.number().default(0).volatile().hidden(),
   /** Human-readable outcome of the last completed sync. */
-  lastSyncSummary: z.string().default(''),
+  lastSyncSummary: z.string().default('').volatile().hidden(),
   /** Last sync failure message; empty when healthy. */
-  lastSyncError: z.string().default(''),
+  lastSyncError: z.string().default('').volatile().hidden(),
 });
 
 /** Build the models endpoint from a configured base URL. */
@@ -240,11 +242,13 @@ function apply(ctx, config) {
   }
 
   /** (Re)arm the periodic loop from the current volatile config. */
+  let timerShape = '';
   function arm() {
     if (intervalHandle != null) {
       intervalHandle();
       intervalHandle = null;
     }
+    timerShape = `${g('enabled') ? 1 : 0}|${Math.max(1, Number(g('intervalMinutes')) || 10)}`;
     if (!g('enabled')) return;
     const minutes = Math.max(1, Number(g('intervalMinutes')) || 10);
     intervalHandle = ctx.interval(() => { void run('auto'); }, minutes * 60_000);
@@ -252,14 +256,17 @@ function apply(ctx, config) {
 
   arm();
 
-  // Catch-up run shortly after activation; the guard keeps status-triggered
-  // remounts from re-running the sync in a loop.
+  // Catch-up run shortly after activation; the guard bounds any remount burst
+  // (a fresh boot within the window never re-syncs immediately).
   if (g('enabled') && Date.now() - (Number(g('lastSyncAt')) || 0) > BOOT_GUARD_MS) {
     ctx.timeout(() => { void run('boot'); }, BOOT_SYNC_DELAY_MS);
   }
 
   ctx.on('loader/volatile-update', () => {
-    arm();
+    // Status write-backs arrive here as well, so only a real change of cadence
+    // re-arms: a completed sync must not restart its own countdown.
+    const shape = `${g('enabled') ? 1 : 0}|${Math.max(1, Number(g('intervalMinutes')) || 10)}`;
+    if (shape !== timerShape) arm();
     const trigger = Number(g('syncRequestAt')) || 0;
     if (trigger && trigger !== lastTrigger) {
       lastTrigger = trigger;

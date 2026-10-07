@@ -4,12 +4,15 @@ window.__ModuleLoader__.load({
     const React = require('react');
     const h = React.createElement;
     const NS = 'dsh-newapi-model-sync';
+    /** Own settings namespace: the Loader entry id, exactly as `cordis.patch.yml` spells it. */
     const ENTRY = 'newapi-model-sync';
+    /** Settings namespace of the llm route entry this plugin writes into. */
+    const LLM_NS = 'llm-pi-ai';
     const DICT = {
       zh: {
         nav: 'New API 同步',
         title: 'New API 模型同步',
-        desc: '定时从 New API 实例拉取模型列表，覆盖写入 llm-pi-ai 的 provider 路由。地址、密钥、周期与开关请在「设置 → 插件」的本插件表单中修改。',
+        desc: '定时从 New API 实例拉取模型列表，覆盖写入 llm-pi-ai 的 provider 路由。地址、密钥、周期与开关在本插件 profile patch 条目的 config 中修改（见 README）。',
         lastSync: '上次同步',
         never: '从未同步',
         summary: '结果',
@@ -19,6 +22,7 @@ window.__ModuleLoader__.load({
         syncing: '正在同步…',
         timeoutHint: '同步已触发，但等待结果超时，请稍后刷新查看。',
         writeFailed: '触发写入失败',
+        missing: '未在配置命名空间中找到本插件条目（id 可能被改动，应为 newapi-model-sync）',
         conflictHint: '配置已被其他窗口修改，已重新读取，请再点一次「立即同步」。',
         hintCmd: '也可以在对话框输入 /newapi-sync 手动触发。',
         loading: '正在读取配置…',
@@ -28,7 +32,7 @@ window.__ModuleLoader__.load({
       en: {
         nav: 'New API Sync',
         title: 'New API Model Sync',
-        desc: 'Polls the model list of a New API instance and mirrors it into the llm-pi-ai provider route. Edit base URL, key, period and the switch in Settings → Plugins for this plugin.',
+        desc: 'Polls the model list of a New API instance and mirrors it into the llm-pi-ai provider route. Edit base URL, key, period and the switch in this plugin\'s `config:` block in the profile patch (see README).',
         lastSync: 'Last sync',
         never: 'Never synced',
         summary: 'Result',
@@ -38,6 +42,7 @@ window.__ModuleLoader__.load({
         syncing: 'Syncing…',
         timeoutHint: 'Sync was triggered but waiting timed out; refresh later to see the result.',
         writeFailed: 'Failed to write the trigger',
+        missing: 'This plugin has no settings namespace (the entry id should be newapi-model-sync)',
         conflictHint: 'Settings changed in another window; reloaded, click Sync now again.',
         hintCmd: 'You can also run /newapi-sync in the composer.',
         loading: 'Loading settings…',
@@ -66,6 +71,9 @@ window.__ModuleLoader__.load({
     const btnPrimary = { ...btn, background: 'var(--dsw-alias-state-business-primary)', color: '#fff', borderColor: 'transparent' };
     const err = { fontSize: 13, color: 'var(--dsw-alias-state-error-primary)' };
 
+    /** Namespace rows of one describe() payload: { writable, hasDocument, namespaces: [...] }. */
+    const rowsOf = (value) => (value && Array.isArray(value.namespaces) ? value.namespaces : []);
+
     function Section({ ctx, t }) {
       const [state, setState] = React.useState({ loading: true });
       const [busy, setBusy] = React.useState(false);
@@ -80,9 +88,10 @@ window.__ModuleLoader__.load({
             setState({ loading: false, error: (r && r.error && r.error.message) || t('failed') });
             return;
           }
-          const desc = (r.value || []).find((x) => x.ns === ENTRY);
-          const llm = (r.value || []).find((x) => x.ns === 'llm-pi-ai');
-          setState({ loading: false, desc, llm, error: desc ? '' : t('failed') });
+          const rows = rowsOf(r.value);
+          const desc = rows.find((x) => x.ns === ENTRY);
+          const llm = rows.find((x) => x.ns === LLM_NS);
+          setState({ loading: false, desc, llm, error: desc ? '' : t('missing') });
         } catch (e) {
           setState({ loading: false, error: String((e && e.message) || e) });
         }
@@ -120,7 +129,7 @@ window.__ModuleLoader__.load({
             waited += 2500;
             try {
               const rr = await ctx.remote.settings.describe();
-              const d = rr && rr.ok && (rr.value || []).find((x) => x.ns === ENTRY);
+              const d = rr && rr.ok && rowsOf(rr.value).find((x) => x.ns === ENTRY);
               if (d && d.value && Number(d.value.lastSyncAt) >= trigger) {
                 clearInterval(pollRef.current);
                 pollRef.current = null;
@@ -173,7 +182,11 @@ window.__ModuleLoader__.load({
     }
 
     return {
-      inject: ['slots', 'locale', 'remote'],
+      // `remote.<ns>` sub-namespace must be injected by name, not only `remote`:
+      // the generated client registers it as its own service key, so reading
+      // ctx.remote.settings without it throws "cannot get property
+      // \"remote.settings\" without inject".
+      inject: ['slots', 'locale', 'remote', 'remote.settings'],
       apply(ctx) {
         ctx.locale.register(NS, DICT);
         const t = ctx.locale.bind(NS);

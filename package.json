@@ -1,6 +1,6 @@
 {
   "name": "dsh-newapi-model-sync",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Mirror a New API instance's model list into a DeepSeek Harness llm-pi-ai provider route.",
   "type": "module",
   "main": "index.js",
