@@ -22,8 +22,10 @@ shared gateway usually also exposes (`@cf/*`, `bge-*`, `whisper`, `flux-*`, …)
 - **Filtering** by user-editable, case-insensitive regexes (`excludePatterns`).
 - **Field preservation** — a model already in the list keeps its custom fields
   (`contextWindow`, `reasoningEfforts`, …); only genuinely new ids are added as `{ id, name }`.
-- **Settings section**: a card under *Settings* with the last sync time, its result, any error, the
-  number of models currently in the route, and a **Sync now** button.
+- **Settings page**: a real configuration form under *Settings* — enable/disable, base URL, key,
+  provider route, interval, exclusion rules, and the debug-log path, each with an override marker
+  and a *Reset to default* action, saved as **one atomic write**. It also shows the last sync time,
+  its result, any error, the number of models currently in the route, and a **Sync now** button.
 - **Slash command** `/newapi-sync`.
 - **Three triggers**: boot (20 s after activation), interval timer, manual.
 - **Safety valves** so a bad upstream can never wipe your config (see below).
@@ -56,10 +58,15 @@ off by default (`hmr.root: []`), so the running process keeps the old schema unt
 
 ## Configure
 
-Options are **not** edited in the web UI: in `0.2.0-rc.2` the Settings → Plugins page renders no
-form for a third-party plugin's Config (only built-in features register tabs there). They live in the
-`config:` block of this plugin's entry in the **active profile patch**, e.g.
-`profiles/web/cordis.patch.yml`:
+Open **Settings → New API Sync**. Every option below is editable there: the page reads live values
+from the Host, marks a field it inherited from the composition as *Overridden*, offers *Reset to
+default* per field, and writes all staged edits in one atomic mutation — so a half-typed form can
+never leave the plugin between two states. A save takes effect immediately (`volatile` fields; no
+remount, no restart).
+
+The same values live in the `config:` block of this plugin's entry in the **active profile patch**,
+e.g. `profiles/web/cordis.patch.yml` — useful for the very first run (before you have a browser),
+for versioning the whole profile, or if you prefer editing YAML:
 
 ```yaml
 - id: newapi-model-sync
@@ -72,12 +79,13 @@ form for a third-party plugin's Config (only built-in features register tabs the
     intervalMinutes: 10
 ```
 
-Keep the `id` — the settings card reads its state from the namespace named after that entry id.
+Keep the `id` — the settings page addresses its own namespace by that entry id. Change it and the
+page reports *"the Host is not serving this entry"* rather than quietly reconfiguring some other
+plugin.
 
-Every field above is declared `volatile`, so the Host can apply an edit without remounting the
-plugin; whether a hand-edited patch file is picked up live depends on your HMR configuration, so
-**restart the Host if a change does not take effect**. The settings card then shows what the running
-plugin actually sees.
+A hand-edited patch file is picked up without a restart only if HMR covers the profile document
+(off by default, `hmr.root: []`); otherwise **restart the Host**. The settings page always shows the
+values the running plugin actually sees, so it is the fastest way to confirm whether an edit landed.
 
 Fields:
 
@@ -85,14 +93,14 @@ Fields:
 | --- | --- | --- | --- |
 | `enabled` | switch | on | Master switch; the timer and manual runs both obey it. |
 | `baseUrl` | text | *(empty)* | Your New API base, e.g. `https://newapi.example.com/v1`. `/models` is appended; a value without a scheme is treated as `https://`. Nothing is fetched until this is set. |
-| `apiKey` | secret | *(empty)* | `sk-` token used **only** for `GET /models`; never written into the route config. Stored as **plain text** in the profile patch — keep that file owner-only (`chmod 600`). |
+| `apiKey` | secret | *(empty)* | `sk-` token used **only** for `GET /models`; never written into the route config. Declared `role('secret')`, so the harness **strips it from every settings read** — the browser only ever learns *whether* one is configured. That also makes the field write-only: blank means *keep*, and *Clear key* removes it. On disk it is still **plain text** in the profile patch, so keep that file owner-only (`chmod 600`). |
 | `providerName` | text | `newapi` | The `llm-pi-ai` provider route to mirror into. |
 | `intervalMinutes` | number (≥1) | `10` | Auto-sync period. |
 | `excludePatterns` | string[] | see below | Case-insensitive regexes; a matching model id is excluded. |
 | `preserveCustomFields` | switch | on | Keep per-model custom fields for ids already present. |
 | `syncRequestAt` | number | `0` | **Internal trigger** written by the *Sync now* button. Do not edit by hand. |
 | `debugFile` | text | *(empty)* | Optional file path; when set, every step is appended there. Clear it to stop tracing. |
-| `lastSyncAt` / `lastSyncSummary` / `lastSyncError` | read-only | — | Last sync time, result summary, error. Written back by the plugin; `volatile` so the card can read it, `hidden` so no form offers it for editing. |
+| `lastSyncAt` / `lastSyncSummary` / `lastSyncError` | read-only | — | Last sync time, result summary, error. Written back by the plugin; `volatile` so the settings page can read it. They are also declared `hidden` — for intent, because no settings surface in `0.2.0-rc.2` consumes that flag; this plugin's own page simply does not offer them. |
 
 Default exclusion patterns:
 
@@ -139,11 +147,17 @@ Triggering: **boot sync** (20 s after activation), **interval** (`intervalMinute
 
 ## Troubleshooting
 
-- **Nothing syncs** → check `lastSyncError` on the settings card; the most common cause is an empty
+- **Nothing syncs** → check `lastSyncError` on the settings page; the most common cause is an empty
   `baseUrl` or a rejected token.
 - **`cannot get property "remote.settings" without inject`** → that client half predates 1.0.1, which
   declares `remote.settings` in `inject`. Upgrade and reload the page; restart the Host if the
   message survives the reload.
+- **The settings page says the Host is not serving this entry** → the namespace it addresses is the
+  Loader entry id, so either the `id` was changed in the patch or the entry is disabled. Restore
+  `newapi-model-sync` and reload.
+- **Every control is greyed out** → the deployment is read-only (`settings.describe` answered
+  `writable: false`), or this page is not bound to a local Host (a remote, unauthenticated page keeps
+  preferences process-local and never persists them).
 - **Card still says "Never synced" after a sync ran** → the Host is running the pre-1.0.1 `Config`,
   where the status fields were not `volatile` and therefore never reached the browser. Restart it.
 - **A model I need is missing** → it matched an exclusion regex; remove that entry from
@@ -158,9 +172,11 @@ Triggering: **boot sync** (20 s after activation), **interval** (`intervalMinute
   `api`, …) are untouched.
 - `GET /v1/models` returns ids, not capabilities. Newly added models therefore use pi-ai defaults;
   `preserveCustomFields` only preserves fields for ids that were already present.
-- `syncRequestAt` and the three status fields are `volatile().hidden()`: *volatile* so the card can
-  read them, *hidden* so no generated form offers them as inputs. Do not edit them by hand.
-- **The client half uses harness-internal shapes** (`settings.section` slot,
+- `syncRequestAt` and the three status fields are `volatile` (so the settings page can read and, for
+  the trigger, write them) and declared `hidden` (so they are clearly not user options). Nothing in
+  the `0.2.0-rc.2` settings domain reads that flag, so the practical guarantee is that this plugin
+  registers its own page and simply never offers those fields. Do not edit them by hand.
+- **The client half uses harness-internal shapes** (`settings.section` slot, `ctx.configForms`,
   `ctx.remote.settings.mutate`). A DSH upgrade may require corresponding changes; treat the peer
   range above as the supported range.
 - **Host-side messages are Chinese only** (summaries, `/newapi-sync` description, error strings).
@@ -172,24 +188,45 @@ Triggering: **boot sync** (20 s after activation), **interval** (`intervalMinute
 
 ## Development notes
 
+- The settings page is built on **`ctx.configForms`** (the settings domain's public face, provided
+  by `dsh-client-ui-settings`): `get(entryId)` gives a shared per-entry form whose snapshot is
+  derived from one browser-wide describe mirror, and `set` / `unset` / `mutate` queue writes that
+  carry the latest revision, fold the Host's answer back into the mirror and reload Host state when a
+  write is refused. Prefer it over calling `ctx.remote.settings` by hand — it is the seam the
+  built-in settings pages use, and it costs you one subscription instead of a polling loop.
+- **A `role('secret')` field never reaches the browser.** `describe()` answers under
+  `redactSecrets: true`, which strips the literal from `value`, `base` and `user` and reports only
+  `secrets: [{ path, set }]`. A settings page therefore renders such a field as write-only, reads
+  its configured state from that list, and writes it with a path-addressed op.
+- **Host-side writes are invisible to the browser** unless something re-reads: `settings/document-updated`
+  is only emitted while `dsh-settings` describes. After writing another entry's config (or its own
+  status) this plugin emits `app-boot/config-reload`, the public "the config changed underneath you"
+  event; `dsh-settings` re-describes, and the resulting invalidation refreshes every open settings
+  page — including the Models page after a list rewrite. The card still keeps a bounded poll as a
+  fallback for a deployment where nothing is listening.
 - During activation the plugin runs inside the Loader's HMR transaction, where a direct
   `configEditor.edit` throws `HMR transactions cannot be nested`. All writes therefore go through
   an `exclusive()` helper that runs the callback from a clean context via
   `ctx.hmr.executing.exit(fn)`.
 - **The client half must declare `remote.settings`, not just `remote`.** Each generated remote
   namespace is its own service key in the fiber's inject set, so reading `ctx.remote.settings`
-  without it throws `cannot get property "remote.settings" without inject`.
+  without it throws `cannot get property "remote.settings" without inject`. `configForms` must be
+  declared the same way.
 - **Only `volatile` fields reach the browser.** `dsh-settings` projects a Config through
-  `volatileForm` before `remote.settings.describe()` answers, so any value the card displays must be
-  `.volatile()`; add `.hidden()` so generated forms do not offer it for editing.
+  `volatileForm` before it answers, so any value the page displays or writes must be `.volatile()`;
+  a non-volatile write remounts the plugin instead. `.hidden()` is declared for intent — nothing in
+  `0.2.0-rc.2` consumes it, and neither does `autoGenerate`, which is why no settings surface in this
+  version generates a form for a third-party plugin's Config: a page has to be registered by hand.
 - `describe()` answers `{ writable, hasDocument, namespaces: [...] }`, keyed by the **Loader entry
   id**, and each row carries `value` plus a `revision` for compare-and-set writes. `mutate()` answers
   `{ ok: false, error: { code, message } }`, with `settings/conflict` on a stale revision.
 - `loader/volatile-update` fires for *every* volatile write, including this plugin's own status
   write-back, so the listener re-arms the timer only when the cadence actually changed.
-- Status fields are `volatile` since 1.0.1 (they must persist *and* be readable by the card);
-  `syncRequestAt` was always volatile, so an applied edit emits `loader/volatile-update`, which the
-  listener uses to check for a manual request.
+- `npm test` runs two headless suites that need no browser and no harness process:
+  `test/client-render.mjs` evaluates the client bundle with a minimal React and a fake `ctx`, and
+  asserts the rendered page and the exact ops each control writes; `test/host-config.mjs` imports
+  the real `Config` and fails if a field loses `volatile`, the key loses `role('secret')`, or the
+  two halves drift apart.
 
 ## Uninstall
 
@@ -214,8 +251,9 @@ Harness 的 `llm-pi-ai` provider 路由：上游新增即加入，上游删除�
 - 可编辑的排除规则（`excludePatterns`，大小写不敏感正则）。
 - 字段保留：列表中原有的模型保留其自定义字段（`contextWindow`、`reasoningEfforts` 等），
   只有真正的新 id 才按 `{ id, name }` 生成。
-- 设置页分区卡片：上次同步时间、结果、错误、当前路由里的模型数，以及「立即同步」按钮。
-  另有 `/newapi-sync` 命令。配置项本身在 profile patch 里改（见「配置」一节）。
+- 设置页表单：总开关、接口地址、密钥、目标路由、周期、排除规则、调试日志都在网页里改，一次原子写入
+  保存全部改动；已覆盖的字段会标注，并可单字段恢复默认。同时显示上次同步时间、结果、错误、当前路由
+  里的模型数，并提供「立即同步」按钮。另有 `/newapi-sync` 命令。
 - 三种触发：启动补同步（激活后 20 秒）、定时、手动。
 - 安全阀保证上游异常不会毁掉你的配置（见下）。
 
@@ -237,9 +275,13 @@ Host 侧与定时同步无需刷新）。但如果升级改动了 `Config`，还
 
 ### 配置
 
-配置项**不在网页里改**：`0.2.0-rc.2` 的「设置 → 插件」只为内置功能注册标签页，不会为第三方插件的
-Config 生成表单。它们位于活动 profile patch（例如 `profiles/web/cordis.patch.yml`）里本插件条目的
-`config`：
+打开**设置 → New API 同步**：上表里的每一项都能在网页里改。页面读的是 Host 的实时值，从组合层继承
+下来的字段会标「已覆盖」并可以单字段恢复默认，所有改动**一次原子写入**保存（半填的表单不会让插件
+停在两个状态之间），保存即时生效（`volatile` 字段，不重启、不重挂载）。校验不过的字段会就地报错，
+保存按钮同时禁用，不会把非法值写进配置。
+
+同样的值也存在活动 profile patch（例如 `profiles/web/cordis.patch.yml`）里本插件条目的 `config`，
+适合这几种情况：第一次运行还没有浏览器、想把整个 profile 纳入版本管理、或者你就是更喜欢改 YAML：
 
 ```yaml
 - id: newapi-model-sync
@@ -252,12 +294,11 @@ Config 生成表单。它们位于活动 profile patch（例如 `profiles/web/co
     intervalMinutes: 10
 ```
 
-`id` 不要改：设置页卡片是按这个条目 id 作为命名空间去读状态的。下列字段都声明为 `volatile`，改动
-不一定要重启才生效（取决于你的 HMR 配置），**改了没反应就重启 Host**。字段含义见上表：
-`enabled` 总开关、`baseUrl` 实例地址（例如 `https://newapi.example.com/v1`，**默认为空，填了才会
-同步**）、`apiKey` 仅用于 `GET /models` 的密钥、`providerName` 目标路由、`intervalMinutes` 周期、
-`excludePatterns` 排除规则、`preserveCustomFields` 字段保留、`debugFile` 排错日志、
-`lastSyncAt/Summary/Error` 只读状态。
+`id` 不要改：设置页就是按这个条目 id 作为命名空间寻址的；改了 id 页面会**整块消失**（不会再误配别的
+插件），这时按新 id 恢复即可。
+
+手工编辑的 patch 文件只有在 HMR 覆盖 profile 文档时才会热加载（默认不开，`hmr.root: []`），否则请
+**重启 Host**。设置页显示的永远是运行中插件真正看到的值，所以它是确认改动有没有生效的最快办法。
 
 ### 安全阀
 
@@ -272,17 +313,37 @@ Config 生成表单。它们位于活动 profile patch（例如 `profiles/web/co
 - **本插件接管整个 `models` 列表**：不要再手工维护它（手工加的会在下一轮被覆盖）；路由其它字段
   不受影响。
 - `/v1/models` 不返回能力参数，新增模型按 pi-ai 默认值处理。
-- `syncRequestAt` 与三个状态字段都是 `volatile().hidden()`：volatile 让卡片读得到，hidden 让表单
-  不显示它们，请勿手工修改。
-- 卡片报「读取设置失败: cannot get property "remote.settings" without inject」，说明浏览器里还是
-  1.0.1 之前的客户端半区：升级后刷新页面；仍报错就重启 Host。
-- 若同步确实执行了但卡片一直显示「从未同步」，说明 Host 还在跑 1.0.1 之前的 `Config`（状态字段当时
-  不是 volatile，传不到浏览器）：重启 Host。
-- 1.0.1 之前状态字段不是 volatile，每次写回都属于非 volatile 配置变更、会重挂载插件（这正是 2 分钟
-  启动保护针对的情况）；现在它只在真正的重挂载风暴时起作用。
-- 客户端半区依赖 harness 内部形状（`settings.section` 槽位、`ctx.remote.settings.mutate`），
-  DSH 升级可能需要跟着改；支持范围以上面的 peer 区间为准。
-- Host 侧文案目前只有中文（摘要、命令描述、错误信息）；设置面板本身是 zh/en 双语。
+- `syncRequestAt` 与三个状态字段是 `volatile`（必须能被网页读到，同时允许不重启就生效），并按
+  `hidden()` 表达「不要拿去当表单项」的意图；`0.2.0-rc.2` 里没有任何界面消费 `hidden`（`autoGenerate`
+  也一样没人消费），所以真正的保护是本插件自己注册页面、不提供这些字段的编辑控件。请勿手工修改它们。
+- `apiKey` 声明了 `role('secret')`：harness 会在每次配置读取时把它从 `value`/`base`/`user` 里剥掉，
+  浏览器只能拿到 `secrets: [{ path, set }]`，也就是**有没有配过**。因此页面上它是只写字段——留空表示
+  保持原值，「清除密钥」才会真的删除。磁盘上的 profile patch 仍是明文，请保持该文件仅属主可读写
+  （`chmod 600`）。
+- 升级后请**刷新页面**：客户端半区按文件内容分发，`npm test` 通过但网页里仍是旧表单，几乎都是没刷新。
+  若页面显示「Host 当前没有提供本插件条目」，多半是条目 `id` 被改动或该条目被停用。
+- 客户端半区依赖 harness 的内部形状（`settings.section` 槽位、`ctx.configForms` 的快照与写入队列、
+  `ctx.remote.settings.describe`），DSH 升级可能需要跟着改；支持范围以上面的 peer 区间为准。
+- 排错：页面报「读取设置失败: cannot get property "remote.settings" without inject」说明浏览器里还是
+  1.0.1 之前的客户端半区，刷新页面即可，仍报错就重启 Host。页面提示「Host 当前没有提供本插件条目」，
+  是条目 `id` 被改动或该条目被停用。控件全灰是这份部署只读（`describe` 回了 `writable: false`），或
+  本页面没连到本机 Host（远程未认证页面把偏好留在进程内，不会落盘）。同步确实跑了但页面一直显示
+  「从未同步」，说明 Host 还在跑 1.0.1 之前的 `Config`（那时状态字段不是 volatile，传不到浏览器）：
+  重启 Host。
+- Host 侧文案目前只有中文（摘要、命令描述、错误信息）；设置页本身是 zh/en 双语。
+
+### 排错
+
+- **完全没有同步** → 看设置页的「错误」；最常见的是 `baseUrl` 为空或令牌被拒。
+- **「读取设置失败: cannot get property "remote.settings" without inject」** → 浏览器里还是 1.0.1
+  之前的客户端半区。升级后刷新页面；刷新后仍在报就重启 Host。
+- **「Host 当前没有提供本插件条目」** → 页面按条目 `id` 寻址命名空间，说明 `id` 被改动或该条目被停用。
+- **所有控件都是灰的** → 这份部署只读，或者本页面没连到本机 Host（远程未认证页面把偏好留在进程内）。
+- **确实同步了但页面还是「从未同步」** → Host 仍在跑 1.0.1 之前的 `Config`（状态字段不是 volatile）：
+  重启 Host。
+- **需要的模型不见了** → 命中了排除规则，从 `excludePatterns` 里删掉那条正则。
+- **要逐步线索** → 设 `debugFile` 指向一个路径后复现，每一步都会追加进去。
+- **装完看不到面板** → 刷新网页。
 
 ### 卸载
 

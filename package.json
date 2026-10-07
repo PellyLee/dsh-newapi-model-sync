@@ -1,9 +1,12 @@
 {
   "name": "dsh-newapi-model-sync",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Mirror a New API instance's model list into a DeepSeek Harness llm-pi-ai provider route.",
   "type": "module",
   "main": "index.js",
+  "scripts": {
+    "test": "node test/host-config.mjs && node test/client-render.mjs && node test/locale-keys.mjs"
+  },
   "icon": "./icon.svg",
   "license": "MIT",
   "author": "PellyLee <qtsrain@qq.com>",
@@ -41,6 +44,7 @@
     "cordis.patch.yml",
     "icon.svg",
     "locale/*.json",
+    "test/*.mjs",
     "CHANGELOG.md"
   ],
   "dsh": {

@@ -159,6 +159,17 @@ function apply(ctx, config) {
     return fn();
   }
 
+  /** Tell the settings domain that the config changed underneath it.
+   * `dsh-settings` re-describes on `app-boot/config-reload`, and a changed
+   * revision emits `settings/document-updated`, which is forwarded to every
+   * connected browser — so the browser-side describe mirror (and this plugin's
+   * settings card, plus the Models page after a list rewrite) refreshes without
+   * waiting for a read. Best-effort: the card also keeps a bounded poll for the
+   * case where no settings provider is composed. */
+  function notifySettings() {
+    try { ctx.emit('app-boot/config-reload'); } catch { /* refresh is an optimization */ }
+  }
+
   /** Persist last-run status as ordinary config fields on our own row. */
   async function writeStatus(fields) {
     try {
@@ -166,6 +177,7 @@ function apply(ctx, config) {
       if (!entry) { dbg('writeStatus: own entry not found'); return; }
       await exclusive(() => ctx.configEditor.edit(entry, (current) => ({ ...(current || {}), ...fields })));
       dbg(`writeStatus ok: at=${fields.lastSyncAt} err=${fields.lastSyncError || '-'}`);
+      notifySettings();
     } catch (e) {
       dbg(`writeStatus FAIL: ${String(e?.message ?? e)}`);
       log?.warn?.(`newapi-sync: 状态写回失败：${String(e?.message ?? e)}`);
@@ -216,6 +228,9 @@ function apply(ctx, config) {
           curProviders[providerName] = { ...curProviders[providerName], models: newEntries };
           return { ...(current || {}), providers: curProviders };
         }));
+        // The rewritten route is another entry's config, so the Models page and
+        // every other browser form holding that namespace needs to re-read it.
+        notifySettings();
       }
       let summary = `共 ${kept.length} 个模型：新增 ${added.length}，移除 ${removed.length}${changed ? '' : '（无变更）'}`;
       if (added.length) log.info(`newapi-sync: 新增 ${added.join(', ')}`);
