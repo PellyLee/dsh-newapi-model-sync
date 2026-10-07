@@ -93,7 +93,7 @@ Fields:
 | --- | --- | --- | --- |
 | `enabled` | switch | on | Master switch; the timer and manual runs both obey it. |
 | `baseUrl` | text | *(empty)* | Your New API base, e.g. `https://newapi.example.com/v1`. `/models` is appended; a value without a scheme is treated as `https://`. Nothing is fetched until this is set. |
-| `apiKey` | secret | *(empty)* | `sk-` token used **only** for `GET /models`; never written into the route config. Declared `role('secret')`, so the harness **strips it from every settings read** — the browser only ever learns *whether* one is configured. That also makes the field write-only: blank means *keep*, and *Clear key* removes it. On disk it is still **plain text** in the profile patch, so keep that file owner-only (`chmod 600`). |
+| `apiKey` | secret | *(empty)* | `sk-` token used **only** for `GET /models`; never written into the route config. Declared `role('secret')`, so the harness **strips it from every settings read** — the browser only ever learns *whether* one is configured. That also makes the field write-only: blank means *keep*, and *Clear key* removes it. Redaction protects the wire, not the disk: the value is stored **in plain text** in the profile patch, so keep that file owner-only (`chmod 600`). If you would rather keep the token off disk entirely, see the `credentials` note under *Limitations*. |
 | `providerName` | text | `newapi` | The `llm-pi-ai` provider route to mirror into. |
 | `intervalMinutes` | number (≥1) | `10` | Auto-sync period. |
 | `excludePatterns` | string[] | see below | Case-insensitive regexes; a matching model id is excluded. |
@@ -176,6 +176,12 @@ Triggering: **boot sync** (20 s after activation), **interval** (`intervalMinute
   the trigger, write them) and declared `hidden` (so they are clearly not user options). Nothing in
   the `0.2.0-rc.2` settings domain reads that flag, so the practical guarantee is that this plugin
   registers its own page and simply never offers those fields. Do not edit them by hand.
+- **The token is stored in the profile patch in plain text**, and a profile patch is often a
+  versioned file. The harness also has a credential vault (the `credentials` service, mounted here by
+  `@deepseek-ai/dsh-credentials-local`), which is how the built-in Web Search page keeps its key off
+  disk: that page stores a *reference* name in its config and resolves the value through the vault.
+  This plugin writes the value itself, so a `chmod 600` on the patch is the mitigation. Switching to
+  a vault reference is a deliberate possible follow-up, not an oversight.
 - **The client half uses harness-internal shapes** (`settings.section` slot, `ctx.configForms`,
   `ctx.remote.settings.mutate`). A DSH upgrade may require corresponding changes; treat the peer
   range above as the supported range.
@@ -318,12 +324,17 @@ Host 侧与定时同步无需刷新）。但如果升级改动了 `Config`，还
   也一样没人消费），所以真正的保护是本插件自己注册页面、不提供这些字段的编辑控件。请勿手工修改它们。
 - `apiKey` 声明了 `role('secret')`：harness 会在每次配置读取时把它从 `value`/`base`/`user` 里剥掉，
   浏览器只能拿到 `secrets: [{ path, set }]`，也就是**有没有配过**。因此页面上它是只写字段——留空表示
-  保持原值，「清除密钥」才会真的删除。磁盘上的 profile patch 仍是明文，请保持该文件仅属主可读写
-  （`chmod 600`）。
+  保持原值，「清除密钥」才会真的删除。脱敏保护的是**传输**而不是磁盘：值以**明文**存在 profile patch
+  里，请保持该文件仅属主可读写（`chmod 600`）。想让令牌完全不落盘，见下面关于 `credentials` 的说明。
 - 升级后请**刷新页面**：客户端半区按文件内容分发，`npm test` 通过但网页里仍是旧表单，几乎都是没刷新。
   若页面显示「Host 当前没有提供本插件条目」，多半是条目 `id` 被改动或该条目被停用。
-- 客户端半区依赖 harness 的内部形状（`settings.section` 槽位、`ctx.configForms` 的快照与写入队列、
-  `ctx.remote.settings.describe`），DSH 升级可能需要跟着改；支持范围以上面的 peer 区间为准。
+- **令牌以明文存在 profile patch 里**，而 profile 往往是要进版本库的文件。harness 另有凭据保险箱
+  （`credentials` 服务，本机由 `@deepseek-ai/dsh-credentials-local` 挂载），内置的「联网搜索」设置页就是
+  用它的：配置里只存一个**引用名**，值从保险箱取，磁盘上不留密钥。本插件直接存值，所以缓解手段就是给
+  patch 目录/文件 `chmod 600`。改成保险箱引用是后续可以做的事，不是遗漏。
+- 客户端半区依赖 harness 的内部形状（`settings.section` 槽位、`ctx.configForms` 的快照与写入队列，
+  以及它底下的 `ctx.remote.settings.describe/mutate`），DSH 升级可能需要跟着改；支持范围以上面的
+  peer 区间为准。
 - 排错：页面报「读取设置失败: cannot get property "remote.settings" without inject」说明浏览器里还是
   1.0.1 之前的客户端半区，刷新页面即可，仍报错就重启 Host。页面提示「Host 当前没有提供本插件条目」，
   是条目 `id` 被改动或该条目被停用。控件全灰是这份部署只读（`describe` 回了 `writable: false`），或

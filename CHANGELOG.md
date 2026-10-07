@@ -18,6 +18,10 @@ The settings card became a real configuration form.
   it from every settings read and reports only `secrets: [{ path, set }]`; the form renders it as a
   write-only field (blank = keep, *Clear key* = unset). 1.0.x never displayed it, but a `sk-` literal
   would have been readable in the browser if it had been.
+- Redaction protects the wire, not the disk: the value still lands in the profile patch in plain
+  text. Documented (both languages) together with the alternative the built-in Web Search page uses —
+  a reference name in config resolved through the `credentials` vault — so the tradeoff is explicit
+  rather than implied.
 - `app-boot/config-reload` is emitted after a host-side write, so the browser re-reads immediately:
   the page shows a finished sync without waiting for its poll, and the **Models page picks up a
   rewritten model list** on its own.
