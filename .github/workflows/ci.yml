@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: test (node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['20', '22', '24']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      # The only peer that is installed is @deepseek-ai/schemastery (public on npm);
+      # @deepseek-ai/dsh is marked optional so CI does not need a Harness install.
+      - run: npm install --no-audit --no-fund
+      - run: npm test
+      - name: Check exactly what would be published
+        run: npm pack --dry-run

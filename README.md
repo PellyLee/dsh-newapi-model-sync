@@ -1,6 +1,8 @@
 # dsh-newapi-model-sync
 
+[![npm version](https://img.shields.io/npm/v/dsh-newapi-model-sync.svg)](https://www.npmjs.com/package/dsh-newapi-model-sync)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![CI](https://github.com/PellyLee/dsh-newapi-model-sync/actions/workflows/ci.yml/badge.svg)](https://github.com/PellyLee/dsh-newapi-model-sync/actions/workflows/ci.yml)
 
 Mirror the model list of a [New API](https://github.com/Calcium-Ion/new-api) instance into a
 DeepSeek Harness `llm-pi-ai` provider route — **two-way overwrite**: a model added upstream is
@@ -40,7 +42,7 @@ shared gateway usually also exposes (`@cf/*`, `bge-*`, `whisper`, `flux-*`, …)
 ## Install
 
 ```bash
-# from npm (once published)
+# from npm
 dsh plugin --profile web add dsh-newapi-model-sync
 
 # or from source
@@ -266,7 +268,7 @@ Harness 的 `llm-pi-ai` provider 路由：上游新增即加入，上游删除�
 ### 安装
 
 ```bash
-dsh plugin --profile web add dsh-newapi-model-sync   # 从 npm（发布后）
+dsh plugin --profile web add dsh-newapi-model-sync   # 从 npm
 
 # 或从源码
 git clone https://github.com/PellyLee/dsh-newapi-model-sync.git

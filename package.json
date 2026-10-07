@@ -5,7 +5,11 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "test": "node test/host-config.mjs && node test/client-render.mjs && node test/locale-keys.mjs"
+    "test": "node test/host-config.mjs && node test/client-render.mjs && node test/locale-keys.mjs",
+    "prepublishOnly": "npm test"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "icon": "./icon.svg",
   "license": "MIT",
